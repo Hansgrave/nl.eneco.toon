@@ -19,6 +19,12 @@ class ToonApp extends Homey.App {
 			}
 		}, 5000); // TODO: hacky, getDevices returns [] if called directly upon init
 	}
+
+	getToonDevicesByCommonName(commonName) {
+		return Homey.ManagerDrivers.getDriver('toon')
+			.getDevices()
+			.filter(device => device.getData().id === commonName);
+	}
 }
 
 module.exports = ToonApp;

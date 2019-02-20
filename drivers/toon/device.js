@@ -69,8 +69,7 @@ class ToonDevice extends OAuth2Device {
 		this.registerCapabilityListener('temperature_state', this.onCapabilityTemperatureState.bind(this));
 		this.registerCapabilityListener('target_temperature', this.onCapabilityTargetTemperature.bind(this));
 
-		// Register webhook and start subscription
-		await this.registerWebhook();
+		// Start subscription
 		await this.registerWebhookSubscription();
 
 		// Fetch initial data
@@ -97,18 +96,6 @@ class ToonDevice extends OAuth2Device {
 	onCapabilityTemperatureState(state, resumeProgram) {
 		this.log('onCapabilityTemperatureState()', 'state:', state, 'resumeProgram:', resumeProgram);
 		return this.updateState(state, resumeProgram);
-	}
-
-	/**
-	 * Method that will register a Homey webhook which listens for incoming events related to this specific device.
-	 */
-	registerWebhook() {
-		const debouncedMessageHandler = debounce(this._processStatusUpdate.bind(this), 500, true);
-		return new Homey.CloudWebhook(Homey.env.WEBHOOK_ID, Homey.env.WEBHOOK_SECRET, {
-			displayCommonName: this.getData().id,
-		})
-			.on('message', debouncedMessageHandler)
-			.register()
 	}
 
 	/**
@@ -143,11 +130,12 @@ class ToonDevice extends OAuth2Device {
 		// Start new subscription if not yet registered
 		if (!webhookIsRegistered) {
 			try {
+			  const homeyId = await Homey.ManagerCloud.getHomeyId();
 				await this.apiCallPost({
 					uri: `${this.getData().agreementId}/webhooks`,
 					json: {
 						applicationId: Homey.env.TOON_KEY,
-						callbackUrl: Homey.env.WEBHOOK_CALLBACK_URL,
+						callbackUrl: `https://${homeyId}.connect.athom.com/api/app/nl.eneco.toon/webhook`,
 						subscribedActions: ['Thermostat', 'PowerUsage', 'GasUsage']
 					}
 				});
@@ -167,7 +155,7 @@ class ToonDevice extends OAuth2Device {
 	async getStatusUpdate() {
 		try {
 			const data = await this.apiCallGet({ uri: `${this.getData().agreementId}/status` });
-			this._processStatusUpdate({ body: { updateDataSet: data } });
+			this.processStatusUpdate({ body: { updateDataSet: data } });
 		} catch (err) {
 			this.error('failed to retrieve status update', err.message);
 		}
@@ -248,14 +236,10 @@ class ToonDevice extends OAuth2Device {
 	 * @param data
 	 * @private
 	 */
-	_processStatusUpdate(data) {
-		this.log('_processStatusUpdate', new Date().getTime());
+	processStatusUpdate(data) {
 
 		// Data needs to be unwrapped
 		if (data && data.hasOwnProperty('body') && data.body.hasOwnProperty('updateDataSet')) {
-
-			this.log(data.body);
-			this.log(data.body.updateDataSet);
 
 			// Prevent parsing data from other displays
 			if (data.body.hasOwnProperty('commonName') && data.body.commonName !== this.getData().id) return;
